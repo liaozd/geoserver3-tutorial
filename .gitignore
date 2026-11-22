@@ -26,3 +26,25 @@ replay_pid*
 .devin
 .zcode
 .qoder
+
+# 第 01 集教学环境：凭据与运行时数据不提交
+docker/.env
+docker/geoserver_data/
+
+# 各集脚本生成的演示数据（脚本可重新生成，不入库）
+data/generated/
+
+# 第 07 集中文字体（大文件且部分字体不可再分发；自行下载放入 docker/fonts/）
+docker/fonts/*.ttf
+docker/fonts/*.otf
+docker/fonts/*.ttc
+
+# Python
+__pycache__/
+*.pyc
+
+# 拍摄计划与课程内容：不入公开仓库（本仓库仅公开代码，课程另行发布）
+/OUTLINE.md
+/episodes/
+/openspec/
+/AGENTS.md
