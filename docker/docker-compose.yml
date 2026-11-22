@@ -1,0 +1,110 @@
+# 第 01 集教学环境：GeoServer 3 + PostGIS（第 06 集起增加 MongoDB）
+# 用法见 episodes/ep01-install.md
+services:
+  geoserver:
+    # 3.0.x 为稳定系列（内置 JDK 17 + Tomcat 11，本机无需装 Java）
+    # 需要完全可复现时改成具体补丁版，如 3.0.2
+    image: docker.osgeo.org/geoserver:3.0.x
+    container_name: geoserver3-tutorial
+    ports:
+      - "8080:8080"
+    environment:
+      # 仅首次初始化用；初始化完成后注释掉这两行，
+      # 否则重启可能覆盖后来新增的用户/角色（官方 README 警告）
+      GEOSERVER_ADMIN_USER: ${GEOSERVER_ADMIN_USER:-admin}
+      GEOSERVER_ADMIN_PASSWORD: ${GEOSERVER_ADMIN_PASSWORD:?请先复制 .env.example 为 .env 并设置密码}
+      # 启动时自动从 build.geoserver.org 的 3.0.x 目录下载扩展，首次启动较慢
+      INSTALL_EXTENSIONS: "true"
+      STABLE_EXTENSIONS: "css,ysld,wps,vectortiles,netcdf,netcdf-out,mongodb"
+      # 教学环境前端直连 GeoServer 需要 CORS；生产环境走 Django 代理时改回 false
+      CORS_ENABLED: "true"
+      # 保留官方示例数据，第 01 集 Layer Preview 要用
+      SKIP_DEMO_DATA: "false"
+      # -Dsun.java2d.fontpath：第 07 集中文字体方案（官方镜像不自动装字体，靠 JVM 字体路径）
+      EXTRA_JAVA_OPTS: "-Xms512m -Xmx2g -Dsun.java2d.fontpath=/opt/fonts"
+    volumes:
+      # 数据目录放宿主机，方便直接查看/备份；不要与 2.x 容器共用
+      - ./geoserver_data:/opt/geoserver_data
+      # 国内网络：先跑 download-extensions.sh 预下载扩展，启动时离线安装
+      - ./additional_libs:/opt/additional_libs
+      # 第 07 集：中文字体放宿主机 docker/fonts/（.ttf/.otf），字体文件不入库
+      - ./fonts:/opt/fonts
+    depends_on:
+      - postgis
+    restart: unless-stopped
+
+  postgis:
+    image: postgis/postgis:16-3.5
+    container_name: postgis-tutorial
+    environment:
+      POSTGRES_DB: gis
+      POSTGRES_USER: ${POSTGRES_USER:-gis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请先复制 .env.example 为 .env 并设置密码}
+    ports:
+      # 只绑定本机回环，避免数据库暴露到局域网
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # 第 06 集 MongoDB 对接。教学环境不启用认证（GeoServer 用 mongodb://mongo:27017/gis 直连）；
+  # 生产环境必须开 auth，连接串改为 mongodb://user:pass@mongo:27017/gis
+  mongo:
+    image: mongo:6
+    container_name: mongo-tutorial
+    ports:
+      # 只绑定本机回环，方便宿主机 mongosh/mongoimport 调试
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongodata:/data/db
+    restart: unless-stopped
+
+  # 14 集：MinIO 模拟 S3（profile: minio）
+  minio:
+    image: minio/minio:latest
+    container_name: minio-tutorial
+    profiles: ["minio"]
+    command: server /data --console-address ":9001"
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?请先复制 .env.example 为 .env 并设置密码}
+    volumes:
+      - miniodata:/data
+    restart: unless-stopped
+
+  # 15 集：ClickHouse（profile: clickhouse）
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: clickhouse-tutorial
+    profiles: ["clickhouse"]
+    ports:
+      - "127.0.0.1:8123:8123"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - ckdata:/var/lib/clickhouse
+    restart: unless-stopped
+
+  # 16 集：Nginx 反代（profile: prod）
+  nginx:
+    image: nginx:1.27
+    container_name: nginx-tutorial
+    profiles: ["prod"]
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - geoserver
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  mongodata:
+  miniodata:
+  ckdata:
